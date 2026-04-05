@@ -1,8 +1,10 @@
+#include "util.hpp"
+#include <cassert>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include "util.h"
 
 void
 _error(const char *f, int line, const char *fmt, ...)
@@ -42,3 +44,11 @@ print_hex_packet(size_t n, const uint8_t *buf, int bytes_read)
     fflush(stdout);
 }
 
+void
+SetNonBlocking(int fd)
+{
+    const int flags = fcntl(fd, F_GETFL, 0);
+    assert(flags != -1);
+    const int ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    assert(ret != -1);
+}

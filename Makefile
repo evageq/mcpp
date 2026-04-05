@@ -1,3 +1,7 @@
 CFLAGS += -g
+SRC=$(wildcard ./*.cpp)
+TARGET=main
 all:
-	$(CXX) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) main.cpp util.cpp -o main
+	$(CXX) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(SRC) -o $(TARGET)
+bear:
+	rm $(TARGET); bear -- $(MAKE)

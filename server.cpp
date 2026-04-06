@@ -1,6 +1,7 @@
 #include "server.hpp"
 #include "client.hpp"
 #include "util.hpp"
+#include "packets.hpp"
 #include <algorithm>
 #include <cassert>
 #include <unistd.h>
@@ -197,8 +198,12 @@ cServer::GameLoop()
         inMessageQueue_.pop();
         lk.unlock();
 
-        cParser parser;
+        cParser parser(msg->pkt_->length, msg->pkt_->data.get());
         auto packetProto = parser.DispatchMsg(msg.get());
+        if (packetProto)
+        {
+            packetProto->Handle();
+        }
     }
 }
 

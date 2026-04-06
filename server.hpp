@@ -15,7 +15,7 @@
 #include <thread>
 
 constexpr char SERVER_ADDR[] = "0.0.0.0";
-constexpr static int SERVER_PORT = 9090;
+constexpr static int SERVER_PORT = 9091;
 
 class cServer
 {
@@ -81,6 +81,8 @@ public:
 
     void Shut();
 };
+
+extern cServer Server;
 
 void HandleStopSignal(int);
 

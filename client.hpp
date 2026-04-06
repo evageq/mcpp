@@ -22,7 +22,7 @@ private:
     ClientId id_;
 
     cPacketBuilder packetBuilder_;
-    eConnState conn_state_ = eConnState::None;
+    eConnState conn_state_ = eConnState::Handshaking;
 
 public:
     cClient(int socket, const sockaddr_in &addr, ClientId id);

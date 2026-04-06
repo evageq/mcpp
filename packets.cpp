@@ -5,7 +5,29 @@
 #include <cstring>
 #include <netinet/in.h>
 
-extern cServer Server;
+cParser::cParser(size_t n, uint8_t *buf) : pos_(0), n(n), buf(buf) {}
+
+cProtocolPacketPtr
+MakeHandshakingPacket(cPacketPtr packet)
+{
+    cParser parser(packet->length, packet->data.get());
+    parser.ReadVarInt();
+
+    int proto_version = parser.ReadVarInt();
+    std::string server_addr = parser.ReadString();
+    uint16_t server_port = parser.ReadUnsignedShort();
+    eIntent intention = static_cast<eIntent>(parser.ReadVarInt());
+
+    return std::make_shared<cProtoIntentionHandshakingToServer>(
+        proto_version, server_addr, server_port, intention);
+}
+
+std::unordered_map<cProtocolPacketKey, ProtocolPacketFactoryFn,
+                   cProtocolPacketKeyHash>
+    packet_factory = {
+        { { 0x00, eConnState::Handshaking, ePacketBound::Serverbound },
+         { &MakeHandshakingPacket } }
+};
 
 cInMessage::cInMessage(ClientId client_id, cPacketPtr pkt)
     : client_id_(client_id), pkt_(std::move(pkt))
@@ -13,7 +35,7 @@ cInMessage::cInMessage(ClientId client_id, cPacketPtr pkt)
 }
 
 int8_t
-cParser::ReadByte(size_t n, const unsigned char *buf)
+cParser::ReadByte()
 {
     assert(n > 0);
     assert(pos_ < n);
@@ -21,7 +43,7 @@ cParser::ReadByte(size_t n, const unsigned char *buf)
 }
 
 int
-cParser::ReadVarInt(size_t n, const unsigned char *buf)
+cParser::ReadVarInt()
 {
     int value = 0;
     int position = 0;
@@ -29,7 +51,7 @@ cParser::ReadVarInt(size_t n, const unsigned char *buf)
 
     while (true)
     {
-        currentByte = ReadByte(n, buf);
+        currentByte = ReadByte();
         value |= (currentByte & SEGMENT_BITS) << position;
 
         if ((currentByte & CONTINUE_BIT) == 0)
@@ -51,6 +73,30 @@ cParser::ReadVarInt(size_t n, const unsigned char *buf)
     return value;
 }
 
+std::string
+cParser::ReadString()
+{
+    int len = ReadVarInt();
+    assert(len >= 0);
+    assert(len <= 255);
+    std::string res(len, 0);
+    for (size_t i = 0; i < len; ++i)
+    {
+        int byte = ReadByte();
+        res[i] = byte;
+    }
+
+    return res;
+}
+
+uint16_t
+cParser::ReadUnsignedShort()
+{
+    int msb = ReadByte();
+    int lsb = ReadByte();
+    return (msb >> 8) | lsb;
+}
+
 void
 cParser::Reset()
 {
@@ -69,11 +115,11 @@ cParser::GetPos() const
     return pos_;
 }
 
-cPacketProto
+cProtocolPacketPtr
 cParser::DispatchMsg(cInMessage *msg)
 {
     auto pkt = msg->pkt_;
-    int proto_id = ReadVarInt(pkt->length, pkt->data.get());
+    int proto_id = ReadVarInt();
 
     std::optional<eConnState> state
         = Server.GetClientConnState(msg->client_id_);
@@ -84,7 +130,16 @@ cParser::DispatchMsg(cInMessage *msg)
 
     ePacketBound bound = ePacketBound::Serverbound;
 
-    cPacketProto packetProto(proto_id, state.value(), bound);
+    const cProtocolPacketKey key{ proto_id, state.value(),
+                                  ePacketBound::Serverbound };
+
+    const auto it = packet_factory.find(key);
+    if (it == packet_factory.end())
+    {
+        return nullptr;
+    }
+
+    return it->second(msg->pkt_);
 }
 
 ePacketMetaState
@@ -96,7 +151,7 @@ cPacketBuilder::GetState()
 void
 cPacketBuilder::InitData(size_t length)
 {
-    cPacketPtr packetPtr = std::make_shared<cPacket>(length);
+    packetPtr_ = std::make_shared<cPacket>(length);
     state_ = ePacketMetaState::Partial;
 }
 
@@ -134,24 +189,24 @@ cPacketBuilder::IsValid()
 std::optional<cPacketPtr>
 cPacketBuilder::IncBuildPacket(size_t n, uint8_t *buf)
 {
-    cParser parser;
 
     if (this->GetState() == ePacketMetaState::End)
     {
         this->Reset();
     }
 
-    size_t buf_pos = 0;
     if (this->GetState() == ePacketMetaState::Init)
     {
-        int length = parser.ReadVarInt(n, buf);
+        cParser parser(n, buf);
+
+        int length = parser.ReadVarInt();
         if (!length)
         {
             return std::nullopt;
         }
 
-        buf += buf_pos;
-        n -= buf_pos;
+        buf += parser.GetPos();
+        n -= parser.GetPos();
 
         this->InitData(length);
     }
@@ -180,19 +235,34 @@ cPacketBuilder::Reset()
     state_ = ePacketMetaState::Init;
 }
 
-cPacketProto::cPacketProto(int protocol, eConnState state, ePacketBound bound)
+cProtoIntentionHandshakingToServer::cProtoIntentionHandshakingToServer(
+    int proto_version, std::string server_addr, int server_port,
+    eIntent intention)
+    : proto_version_(proto_version), server_addr_(server_addr),
+      server_port_(server_port), intention_(intention)
 {
-    key = { protocol, state, bound };
 }
 
-cPacketProto::cPacketProto(int protocol, eConnState state, ePacketBound bound,
-                           std::string resource)
-    : cPacketProto(protocol, state, bound)
+int
+cProtoIntentionHandshakingToServer::Handle()
 {
-    resource_ = resource;
+    debug("Handshaking handle");
+    return 0;
 }
 
-cPacketProto &
-cPacketGen::CreatePacketProto(cProtocolPacketKey key)
+std::size_t
+cProtocolPacketKeyHash::operator ()(const cProtocolPacketKey &key) const
 {
+    std::size_t h1 = std::hash<int>{}(key.proto_id_);
+    std::size_t h2 = std::hash<int>{}(static_cast<int>(key.state_));
+    std::size_t h3 = std::hash<int>{}(static_cast<int>(key.bound_));
+
+    return h1 ^ (h2 << 1) ^ (h3 << 2);
+}
+
+bool
+cProtocolPacketKey::operator ==(const cProtocolPacketKey &value) const
+{
+    return proto_id_ == value.proto_id_ && state_ == value.state_
+           && bound_ == value.bound_;
 }

@@ -2,6 +2,7 @@
 #define __PACKETS_H__
 
 #include "types.hpp"
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -21,7 +22,6 @@ enum class eReadStatus
 
 enum class eConnState
 {
-    None,
     Handshaking,
     Status,
     Login,
@@ -47,6 +47,12 @@ struct cProtocolPacketKey
     int proto_id_;
     eConnState state_;
     ePacketBound bound_;
+    bool operator ==(const cProtocolPacketKey &value) const;
+};
+
+struct cProtocolPacketKeyHash
+{
+    std::size_t operator ()(const cProtocolPacketKey &key) const;
 };
 
 struct cPacket
@@ -91,35 +97,34 @@ public:
 };
 using cInMessagePtr = std::shared_ptr<cInMessage>;
 
-class cPacketProto
+class cProtocolPacket
 {
-protected:
-    cProtocolPacketKey key;
-    std::string resource_;
-
 public:
-    cPacketProto() = delete;
-    cPacketProto(int protocol, eConnState state, ePacketBound bound);
-    cPacketProto(int protocol, eConnState state, ePacketBound bound,
-                 std::string resourse);
-
-    virtual int Fill(cPacketPtr) = 0;
+    virtual int Handle() = 0;
+    virtual ~cProtocolPacket() = default;
 };
+using cProtocolPacketPtr = std::shared_ptr<cProtocolPacket>;
+using ProtocolPacketFactoryFn = std::function<cProtocolPacketPtr(cPacketPtr)>;
 
-struct cProtoIntentionHandshakingToServer : cPacketProto
+struct cProtoIntentionHandshakingToServer : cProtocolPacket
 {
     int proto_version_;
     std::string server_addr_;
     int server_port_;
     eIntent intention_;
+
+    cProtoIntentionHandshakingToServer(int proto_version,
+                                       std::string server_addr,
+                                       int server_port, eIntent intention);
+    virtual int Handle() override;
 };
 
-struct cProtoStatus_responseStatusToClient : cPacketProto
+struct cProtoStatus_responseStatusToClient : cProtocolPacket
 {
     std::string json_response_;
 };
 
-struct cProtoPong_responseStatusToClient : cPacketProto
+struct cProtoPong_responseStatusToClient : cProtocolPacket
 {
     long timtestamp_;
 };
@@ -127,12 +132,18 @@ struct cProtoPong_responseStatusToClient : cPacketProto
 class cParser
 {
     size_t pos_ = 0;
+    size_t n = 0;
+    uint8_t *buf = nullptr;
 
 public:
-    int8_t ReadByte(size_t n, const unsigned char *buf);
-    int ReadVarInt(size_t n, const unsigned char *buf);
+    cParser() = delete;
+    explicit cParser(size_t n, uint8_t *buf);
+    int8_t ReadByte();
+    int ReadVarInt();
+    std::string ReadString();
+    uint16_t ReadUnsignedShort();
 
-    cPacketProto DispatchMsg(cInMessage *msg);
+    cProtocolPacketPtr DispatchMsg(cInMessage *msg);
 
     void SetPos(size_t pos);
     size_t GetPos() const;
@@ -141,9 +152,11 @@ public:
 
 class cPacketGen
 {
-    const static std::unordered_map<cProtocolPacketKey, cPacketProto&> packetProtoMap;
+    const static std::unordered_map<cProtocolPacketKey, cProtocolPacket &>
+        packetProtoMap;
+
 public:
-    cPacketProto &CreatePacketProto(cProtocolPacketKey key);
+    cProtocolPacket &CreatePacketProto(cProtocolPacketKey key);
 };
 
 #endif // __PACKETS_H__

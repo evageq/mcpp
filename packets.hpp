@@ -10,6 +10,11 @@
 
 constexpr static int SEGMENT_BITS = 0x7F;
 constexpr static int CONTINUE_BIT = 0x80;
+constexpr static bool PACKETS_DEBUG = true;
+
+#define INIT_PARSER(parser)                                 \
+    cParser parser(msg->pkt->length, msg->pkt->data.get()); \
+    parser.ReadVarInt();
 
 enum class eReadStatus
 {
@@ -42,17 +47,17 @@ enum class ePacketBound
     Clientbound
 };
 
-struct cProtocolPacketKey
+struct cPacketKey
 {
-    int proto_id_;
+    int proto_id;
     eConnState state_;
     ePacketBound bound_;
-    bool operator ==(const cProtocolPacketKey &value) const;
+    bool operator ==(const cPacketKey &value) const;
 };
 
-struct cProtocolPacketKeyHash
+struct cPacketKeyHash
 {
-    std::size_t operator ()(const cProtocolPacketKey &key) const;
+    std::size_t operator ()(const cPacketKey &key) const;
 };
 
 struct cPacket
@@ -87,46 +92,51 @@ public:
     void Reset();
 };
 
-class cInMessage
+struct cInMessage
 {
-public:
-    ClientId client_id_;
-    cPacketPtr pkt_;
+    ClientId client_id;
+    cPacketPtr pkt;
 
     cInMessage(ClientId client_id, cPacketPtr pkt);
 };
 using cInMessagePtr = std::shared_ptr<cInMessage>;
 
-class cProtocolPacket
+class cPacketHandle
 {
+protected:
+    ClientId client_id_;
+
 public:
+    explicit cPacketHandle(ClientId client_id);
     virtual int Handle() = 0;
-    virtual ~cProtocolPacket() = default;
+    virtual void Debug() = 0;
+    virtual ~cPacketHandle() = default;
 };
-using cProtocolPacketPtr = std::shared_ptr<cProtocolPacket>;
-using ProtocolPacketFactoryFn = std::function<cProtocolPacketPtr(cPacketPtr)>;
+using cPacketHandlePtr = std::shared_ptr<cPacketHandle>;
+using PacketHandleFactoryFn = std::function<cPacketHandlePtr(cInMessagePtr)>;
 
-struct cProtoIntentionHandshakingToServer : cProtocolPacket
+struct cPacketHandshake : public cPacketHandle
 {
-    int proto_version_;
-    std::string server_addr_;
-    int server_port_;
-    eIntent intention_;
+    int proto_version;
+    std::string server_addr;
+    int server_port;
+    eIntent intention;
 
-    cProtoIntentionHandshakingToServer(int proto_version,
-                                       std::string server_addr,
-                                       int server_port, eIntent intention);
+    cPacketHandshake(ClientId client_id, int proto_version,
+                     std::string server_addr, int server_port,
+                     eIntent intention);
     virtual int Handle() override;
+    virtual void Debug() override;
 };
 
-struct cProtoStatus_responseStatusToClient : cProtocolPacket
+struct cPacketLoginStart : cPacketHandle
 {
-    std::string json_response_;
-};
+    std::string name;
+    UUID uuid;
 
-struct cProtoPong_responseStatusToClient : cProtocolPacket
-{
-    long timtestamp_;
+    cPacketLoginStart(ClientId client_id, std::string name, UUID uuid);
+    virtual int Handle() override;
+    virtual void Debug() override;
 };
 
 class cParser
@@ -142,21 +152,17 @@ public:
     int ReadVarInt();
     std::string ReadString();
     uint16_t ReadUnsignedShort();
+    UUID ReadUUID();
+    int32_t ReadInt();
+    uint32_t ReadUInt();
+    int64_t ReadLong();
+    uint64_t ReadULong();
 
-    cProtocolPacketPtr DispatchMsg(cInMessage *msg);
+    cPacketHandlePtr DispatchMsg(cInMessagePtr msg);
 
     void SetPos(size_t pos);
     size_t GetPos() const;
     void Reset();
-};
-
-class cPacketGen
-{
-    const static std::unordered_map<cProtocolPacketKey, cProtocolPacket &>
-        packetProtoMap;
-
-public:
-    cProtocolPacket &CreatePacketProto(cProtocolPacketKey key);
 };
 
 #endif // __PACKETS_H__

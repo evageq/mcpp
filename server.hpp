@@ -15,7 +15,7 @@
 #include <thread>
 
 constexpr char SERVER_ADDR[] = "0.0.0.0";
-constexpr static int SERVER_PORT = 9091;
+constexpr static int SERVER_PORT = 9090;
 
 class cServer
 {
@@ -72,6 +72,7 @@ public:
     bool DeleteClient(int fd);
 
     std::optional<eConnState> GetClientConnState(ClientId client_id) const;
+    int SetClientConnState(ClientId client_id, eConnState conn_state);
 
     void GameLoop();
 
@@ -82,7 +83,7 @@ public:
     void Shut();
 };
 
-extern cServer Server;
+extern cServer g_server;
 
 void HandleStopSignal(int);
 

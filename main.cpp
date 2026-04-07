@@ -2,7 +2,7 @@
 #include <arpa/inet.h>
 #include <csignal>
 
-cServer Server(SERVER_ADDR, SERVER_PORT);
+cServer g_server(SERVER_ADDR, SERVER_PORT);
 
 int
 main()
@@ -10,8 +10,8 @@ main()
     std::signal(SIGINT, HandleStopSignal);
     std::signal(SIGTERM, HandleStopSignal);
 
-    Server.Start();
-    Server.Run();
+    g_server.Start();
+    g_server.Run();
 
     return 0;
 }

@@ -41,6 +41,8 @@ public:
     cPacketPtr ExtractPacket();
 
     eConnState GetConnState() const;
+
+    void SetConnState(eConnState conn_state);
 };
 
 #endif // __CLIENT_H__

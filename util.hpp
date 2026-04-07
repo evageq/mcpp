@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 
 extern bool SHELL_DEBUG;
+#define DEBUG 1
 
 #define SHELL(s, ...)                               \
     ({                                              \

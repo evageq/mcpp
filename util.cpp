@@ -20,12 +20,15 @@ _error(const char *f, int line, const char *fmt, ...)
 void
 _debug(const char *f, int line, const char *fmt, ...)
 {
-    char buf[4096];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, 4096, fmt, args);
-    va_end(args);
-    fprintf(stderr, "[%s:%d][DEBUG]: %s\n", f, line, buf);
+    if (DEBUG)
+    {
+        char buf[4096];
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(buf, 4096, fmt, args);
+        va_end(args);
+        fprintf(stderr, "[%s:%d][DEBUG]: %s\n", f, line, buf);
+    }
 }
 
 void

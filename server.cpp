@@ -1,7 +1,7 @@
 #include "server.hpp"
 #include "client.hpp"
-#include "util.hpp"
 #include "packets.hpp"
+#include "util.hpp"
 #include <algorithm>
 #include <cassert>
 #include <unistd.h>
@@ -198,8 +198,8 @@ cServer::GameLoop()
         inMessageQueue_.pop();
         lk.unlock();
 
-        cParser parser(msg->pkt_->length, msg->pkt_->data.get());
-        auto packetProto = parser.DispatchMsg(msg.get());
+        cParser parser(msg->pkt->length, msg->pkt->data.get());
+        auto packetProto = parser.DispatchMsg(msg);
         if (packetProto)
         {
             packetProto->Handle();
@@ -355,4 +355,17 @@ cServer::GetClientConnState(ClientId client_id) const
     }
 
     return client_it.value()->get()->GetConnState();
+}
+
+int
+cServer::SetClientConnState(ClientId client_id, eConnState conn_state)
+{
+    auto client = FindClient(client_id);
+    if (!client)
+    {
+        return -1;
+    }
+
+    client.value()->get()->SetConnState(conn_state);
+    return 0;
 }

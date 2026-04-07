@@ -2,6 +2,7 @@
 #define __TYPES_H__
 
 #include <cstdint>
+#include <utility>
 
 class ClientId
 {
@@ -30,5 +31,7 @@ public:
         return id_ < other.id_;
     }
 };
+
+using UUID = std::pair<uint64_t, uint64_t>;
 
 #endif // __TYPES_H__
